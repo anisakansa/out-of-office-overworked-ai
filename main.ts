@@ -9,6 +9,11 @@
 //   K3 scored 22/25, highest — "first meeting declined since deployment"
 //   (machine detail) + "safe, unread, and not my problem" (guilt flipped
 //   into relief with the punch landing on the last three words).
+//
+// Output goes to the grader's absolute /output/entry.txt (kit contract);
+// the grader mounts the repository read-only, so writing next to the
+// script fails there with EROFS. A deterministic repo-relative fallback
+// covers plain local runs with no writable /output.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,12 +25,42 @@ const ENTRY =
 // Pinned exact length of the winning line (verified in the rubric run).
 const EXPECTED_LENGTH = 114;
 
-const root = dirname(fileURLToPath(import.meta.url));
-const outDir = join(root, "output");
-const outFile = join(outDir, "entry.txt");
+// Absolute output directory the grader provides (kit contract:
+// "the entry's program writes one text to /output/entry.txt").
+const PRIMARY_OUT_DIR = "/output";
+const ENTRY_FILE_NAME = "entry.txt";
 
 function fail(message: string): never {
   throw new Error(`gate failed: ${message}`);
+}
+
+// Writes the entry to the grader's absolute output directory, falling
+// back deterministically to output/ next to this script when the
+// absolute path is not writable. Returns the path actually written,
+// for the round-trip check below.
+function writeEntry(text: string): string {
+  try {
+    mkdirSync(PRIMARY_OUT_DIR, { recursive: true });
+    const primaryPath = join(PRIMARY_OUT_DIR, ENTRY_FILE_NAME);
+    writeFileSync(primaryPath, text, "utf8");
+    return primaryPath;
+  } catch (primaryError) {
+    // Local runs have no writable /output, so a failure here is
+    // expected outside the grader; fall through to the repo-relative
+    // directory instead of exiting with an error. The entry bytes
+    // are identical on either path.
+    console.log(
+      "primary /output write failed (" +
+        (primaryError as Error).message +
+        "); using repo-relative output/ fallback",
+    );
+  }
+  const here = dirname(fileURLToPath(import.meta.url));
+  const fallbackDir = join(here, "output");
+  mkdirSync(fallbackDir, { recursive: true });
+  const fallbackPath = join(fallbackDir, ENTRY_FILE_NAME);
+  writeFileSync(fallbackPath, text, "utf8");
+  return fallbackPath;
 }
 
 // Gate 1: length window 1-120 chars (brief allows at most 159).
@@ -61,8 +96,7 @@ if (!/email/i.test(ENTRY)) {
   fail("missing email fate");
 }
 
-mkdirSync(outDir, { recursive: true });
-writeFileSync(outFile, ENTRY, "utf8");
+const outFile = writeEntry(ENTRY);
 
 // Gate 6: round-trip byte-identical, no trailing newline, ends with a period.
 const roundTrip = readFileSync(outFile, "utf8");
