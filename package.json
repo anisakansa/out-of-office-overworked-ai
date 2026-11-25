@@ -1,0 +1,1 @@
+{"description":"Out of Office: The Overworked AI's Auto-Reply — make.fun bounty entry (single deterministic line, <=120 chars)","license":"MIT","name":"out-of-office-overworked-ai","private":true,"scripts":{"run":"node main.ts"},"type":"module","version":"1.0.0"}
